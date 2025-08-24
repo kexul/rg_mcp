@@ -54,7 +54,7 @@ def main():
         sys.exit(1)
     
     # Initialize FastMCP server
-    mcp = FastMCP("rg-mcp-server")
+    mcp = FastMCP(name="rg_mcp", instructions="MCP server using ripgrep to search content in a folder")
     
     # Add search tool
     @mcp.tool(name="search_files", description="Search for content in files using ripgrep")
