@@ -13,9 +13,15 @@ def find_rg():
     if os.path.isfile(current_dir_rg):
         return current_dir_rg
 
-def search_in_folder(pattern, folder):
+def search_with_ripgrep(pattern, folder):
     """
-    Search for a pattern in a folder using ripgrep
+    Unified search function using ripgrep with different search modes
+    
+    Args:
+        pattern: The search pattern (for general search) or None (for python_def search)
+        folder: The folder to search in
+        search_type: "general" for general pattern search, "python_def" for Python definitions
+        name: The function/class name to search for (used when search_type="python_def")
     """
     import time
     
@@ -25,107 +31,42 @@ def search_in_folder(pattern, folder):
         return "Error: ripgrep (rg) not found. Place rg.exe in the current directory."
     
     try:
-        # Build the rg command
-        cmd = [rg_path, "--heading", "-n", pattern, folder]
-        
-        # Maximum matches per file for this pattern
-        cmd.extend(["--max-count", str(5)])
-        
-        # Add context lines to see the full definition
-        cmd.extend(["-A", "5", "-B", "1"])
-        
-        # Record start time
         start_time = time.time()
+        
+        # Build base command
+        cmd = [rg_path, "--heading", "-n"]
+        max_lines = 400
+        
+        # General search mode
+        if not pattern:
+            return "Error: pattern parameter is required for general search"
+        
+        cmd.append(pattern)
+        search_desc = "Search"
+        no_match_msg = "No matches found"
+        
+        # Add folder and common options
+        cmd.append(folder)
+        cmd.extend(["--max-count", "5"])
+        cmd.extend(["-A", "5", "-B", "1"])
         
         # Execute the command
         result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace')
         
-        # Record end time and calculate duration
         end_time = time.time()
         search_duration = end_time - start_time
         
-        # If max_lines is specified and ripgrep doesn't support --max-count for total lines,
-        # we can also limit the output lines here as a fallback
+        # Handle output
         output = result.stdout
-        if output is None:
-            output = "No matches found"
+        if not output or not output.strip():
+            output = no_match_msg
+        else:
+            lines = output.split('\n')
+            if len(lines) > max_lines:
+                output = '\n'.join(lines[:max_lines]) + f"\n... (output truncated to {max_lines} lines)"
         
-        lines = output.split('\n')
-        max_lines = 300
-        if len(lines) > max_lines:
-            output = '\n'.join(lines[:max_lines]) + f"\n... (output truncated to {max_lines} lines)"
-        
-        # Prepend search time to the output
-        time_info = f"Search completed in {search_duration:.3f} seconds\n{'='*50}\n"
-        return time_info + output
-        
-    except FileNotFoundError:
-        return "Error: ripgrep (rg) not found in PATH"
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-def search_python_definitions(name, folder):
-    """
-    Search for Python function or class definitions using ripgrep
-    """
-    import time
-    
-    # Find rg executable
-    rg_path = find_rg()
-    if rg_path is None:
-        return "Error: ripgrep (rg) not found. Place rg.exe in the current directory."
-    
-    # Combine all Python definition patterns into one regex with OR operator
-    combined_pattern = rf"(^def\s+{name}\s*\(|^class\s+{name}\s*[\(:]|^\s+def\s+{name}\s*\(|^async\s+def\s+{name}\s*\(|^\s+async\s+def\s+{name}\s*\()"
-    
-    try:
-        start_time = time.time()
-        
-        # Build the rg command - single execution
-        cmd = [rg_path, "--heading", "-n", "-e", combined_pattern]
-        
-        # Only search Python files
-        cmd.extend(["-t", "py"])
-        
-        # Add default exclusions
-        cmd.extend([
-            "--glob", "!**/__pycache__/**",
-            "--glob", "!**/.venv/**",
-            "--glob", "!**/venv/**",
-            "--glob", "!**/site-packages/**",
-            "--glob", "!**/.pytest_cache/**"
-        ])
-        
-        cmd.extend([folder])
-        
-        # Maximum matches per file
-        cmd.extend(["--max-count", str(5)])
-        
-        # Add context lines to see the full definition
-        cmd.extend(["-A", "5", "-B", "1"])
-        
-        # Execute the command once
-        result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace')
-        
-        end_time = time.time()
-        search_duration = end_time - start_time
-        
-        if not result.stdout.strip():
-            return f"Search completed in {search_duration:.3f} seconds\n{'='*50}\nNo Python definitions found for '{name}'"
-        
-        # Parse results and categorize by type
-        output = result.stdout
-        lines = output.split('\n')
-        
-        # Limit output lines
-        max_lines = 400
-        if len(lines) > max_lines:
-            output = '\n'.join(lines[:max_lines]) + f"\n... (output truncated to {max_lines} lines)"
-        
-        # Enhanced header with statistics
-        time_info = f"Python definition search completed in {search_duration:.3f} seconds\n"
-        time_info += f"{'='*50}\n"
-        
+        # Format result with timing info
+        time_info = f"{search_desc} completed in {search_duration:.3f} seconds\n{'='*50}\n"
         return time_info + output
         
     except FileNotFoundError:
@@ -164,17 +105,7 @@ def main():
             flags: Additional rg flags (optional)
             max_lines: Maximum number of output lines to return (optional)
         """
-        return search_in_folder(pattern, args.folder)
-
-    @mcp.tool(name="search_definitions", description="Search for Python function or class definitions using ripgrep")
-    def search_definitions(name: str):
-        """
-        Search for Python function or class definitions in the specified folder
-        
-        Args:
-            name: The name of the function or class to search for
-        """
-        return search_python_definitions(name, args.folder)    # Start the server
+        return search_with_ripgrep(pattern, args.folder)
 
     mcp.run()
 
