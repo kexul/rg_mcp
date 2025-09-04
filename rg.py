@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-import argparse
 import subprocess
-import sys
 import os
 from fastmcp import FastMCP
+from vscode_window_tracker import VSCodeWindowTracker
+
+
 
 
 def find_rg():
@@ -77,22 +78,11 @@ def search_with_ripgrep(pattern, folder):
 
 
 def main():
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description="MCP server using ripgrep to search content in a folder")
-    parser.add_argument("folder", help="Folder to search in")
-    args = parser.parse_args()
-    
-    # Validate folder exists
-    if not os.path.exists(args.folder):
-        print(f"Error: Folder '{args.folder}' does not exist")
-        sys.exit(1)
-    
-    if not os.path.isdir(args.folder):
-        print(f"Error: '{args.folder}' is not a directory")
-        sys.exit(1)
-    
     # Initialize FastMCP server
     mcp = FastMCP(name="rg_mcp", instructions="MCP server using ripgrep to search content in a folder")
+    
+    # 创建全局的 tracker 实例
+    tracker = VSCodeWindowTracker()
     
     # Add search tool
     @mcp.tool(name="search_files", description="Search for content in files using ripgrep")
@@ -102,10 +92,21 @@ def main():
         
         Args:
             pattern: The search pattern
-            flags: Additional rg flags (optional)
-            max_lines: Maximum number of output lines to return (optional)
         """
-        return search_with_ripgrep(pattern, args.folder)
+        # 每次调用时都重新获取当前工作空间路径
+        print("正在检测当前VS Code工作空间...")
+        folder = tracker.get_current_workspace_path()
+        
+        # Validate folder exists
+        if not folder or not os.path.exists(folder):
+            return f"Error: 检测到的文件夹 '{folder}' 不存在"
+        
+        if not os.path.isdir(folder):
+            return f"Error: '{folder}' 不是一个目录"
+        
+        print(f"在工作空间中搜索: {folder}")
+        
+        return search_with_ripgrep(pattern, folder)
 
     mcp.run()
 
