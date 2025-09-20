@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
+import time
 import subprocess
 import os
 from fastmcp import FastMCP
-from vscode_window_tracker import VSCodeWindowTracker
 
-
+FOLDER = None
 
 
 def find_rg():
@@ -24,8 +24,6 @@ def search_with_ripgrep(pattern, folder):
         search_type: "general" for general pattern search, "python_def" for Python definitions
         name: The function/class name to search for (used when search_type="python_def")
     """
-    import time
-    
     # Find rg executable
     rg_path = find_rg()
     if rg_path is None:
@@ -79,10 +77,35 @@ def search_with_ripgrep(pattern, folder):
 
 def main():
     # Initialize FastMCP server
-    mcp = FastMCP(name="rg_mcp", instructions="MCP server using ripgrep to search content in a folder")
+    mcp = FastMCP(name="rg_mcp", instructions="MCP server using ripgrep to search content in a folder. Before searching, you must first set an absolute path using set_search_path tool.")
     
-    # 创建全局的 tracker 实例
-    tracker = VSCodeWindowTracker()
+    # Add tool to set search folder
+    @mcp.tool(name="set_search_path", description="Set the folder path for searching files (must be an absolute path)")
+    def set_search_path(path: str):
+        """
+        Set the folder path where files will be searched (must be an absolute path)
+        
+        Args:
+            path: The absolute folder path to set for searching
+        """
+        global FOLDER
+        
+        # Check if the path is absolute
+        if not os.path.isabs(path):
+            return f"Error: Path must be absolute. Received relative path: '{path}'"
+        
+        # Normalize the path
+        normalized_path = os.path.normpath(path)
+        
+        # Check if the path exists and is a directory
+        if not os.path.exists(normalized_path):
+            return f"Error: Path '{normalized_path}' does not exist"
+        
+        if not os.path.isdir(normalized_path):
+            return f"Error: Path '{normalized_path}' is not a directory"
+        
+        FOLDER = normalized_path
+        return f"Search path set to: {normalized_path}"
     
     # Add search tool
     @mcp.tool(name="search_files", description="Search for content in files using ripgrep")
@@ -93,20 +116,11 @@ def main():
         Args:
             pattern: The search pattern
         """
-        # 每次调用时都重新获取当前工作空间路径
-        print("正在检测当前VS Code工作空间...")
-        folder = tracker.get_current_workspace_path()
-        
-        # Validate folder exists
-        if not folder or not os.path.exists(folder):
-            return f"Error: 检测到的文件夹 '{folder}' 不存在"
-        
-        if not os.path.isdir(folder):
-            return f"Error: '{folder}' 不是一个目录"
-        
-        print(f"在工作空间中搜索: {folder}")
-        
-        return search_with_ripgrep(pattern, folder)
+        global FOLDER
+        if FOLDER is None:
+            return 'Search folder not set, please use set_search_path tool to set the search folder first!'
+        return search_with_ripgrep(pattern, FOLDER)
+    
 
     mcp.run()
 
